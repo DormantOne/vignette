@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vignette Builder</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        .node {
+            margin: 10px 0;
+            border: 1px solid #ccc;
+            padding: 10px;
+        }
+        .child-nodes {
+            margin-left: 20px;
+        }
+        .visualization {
+            margin-top: 20px;
+            width: 100%;
+            height: 600px;
+            overflow: auto;
+            border: 1px solid #ccc;
+        }
+        .json-output {
+            white-space: pre-wrap;
+            background-color: #f9f9f9;
+            padding: 10px;
+            border: 1px solid #ccc;
+        }
+        .textarea {
+            width: 100%;
+            min-height: 40px;
+            resize: vertical;
+        }
+        .graph-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+        .node-circle {
+            fill: #fff;
+            stroke: #000;
+            stroke-width: 2px;
+            cursor: pointer;
+        }
+        .node-label {
+            pointer-events: none;
+        }
+        .radio-group {
+            display: flex;
+            gap: 10px;
+        }
+        .tooltip {
+            position: absolute;
+            background-color: #fff;
+            border: 1px solid #ccc;
+            padding: 10px;
+            display: none;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0, 0, 0, 0.4);
+        }
+        .modal-content {
+            background-color: #fff;
+            margin: 15% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 80%;
+        }
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+        }
+        .close:hover,
+        .close:focus {
+            color: black;
+            text-decoration: none;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <h1>Vignette Builder</h1>
+    <div>
+        <label for="title">Title of Condition:</label>
+        <input type="text" id="title" placeholder="Enter the condition title">
+    </div>
+    <div class="node" id="initial">
+        <label>Initial Presentation</label>
+        <div>
+            <label for="initialInterview">Interview:</label>
+            <textarea id="initialInterview" class="textarea" placeholder="Enter initial interview"></textarea>
+        </div>
+        <div>
+            <label for="initialExam">Exam:</label>
+            <textarea id="initialExam" class="textarea" placeholder="Enter initial exam"></textarea>
+        </div>
+        <div>
+            <label for="initialTest">Test:</label>
+            <textarea id="initialTest" class="textarea" placeholder="Enter initial test"></textarea>
+        </div>
+        <div>
+            <label for="initialPreceptorNotes">Preceptor Notes:</label>
+            <textarea id="initialPreceptorNotes" class="textarea" placeholder="Enter preceptor notes"></textarea>
+        </div>
+        <button onclick="addChildChoice('initial')">Add Child</button>
+        <button onclick="addSiblingChoice('initial')">Add Sibling</button>
+    </div>
+    <div id="choices"></div>
+    <button onclick="generateJSON()">Generate JSON</button>
+    <h2>Visualization</h2>
+    <div id="visualization" class="visualization"></div>
+    <h2>JSON Output</h2>
+    <div id="jsonOutput" class="json-output"></div>
+
+    <!-- Modal -->
+    <div id="myModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <div id="modalContent"></div>
+        </div>
+    </div>
+
+    <script src="https://d3js.org/d3.v6.min.js"></script>
+    <script>
+        let nodes = {
+            initial: { id: 'initial', parent: null, interview: '', exam: '', test: '', preceptorNotes: '', choices: [] }
+        };
+
+        let nodeIndex = 2;
+
+        function addChildChoice(parentId) {
+            const parentNode = document.getElementById(parentId);
+            const choiceId = `node-${nodeIndex++}`;
+            nodes[choiceId] = { id: choiceId, parent: parentId, interview: '', exam: '', test: '', preceptorNotes: '', choices: [] };
+
+            const choiceContainer = createNodeContainer(choiceId);
+            parentNode.appendChild(choiceContainer);
+
+            nodes[parentId].choices.push(choiceId);
+        }
+
+        function addSiblingChoice(parentId) {
+            const parentNode = document.getElementById(parentId);
+            const parentOfParentId = nodes[parentId].parent || 'initial';
+            const choiceId = `node-${nodeIndex++}`;
+            nodes[choiceId] = { id: choiceId, parent: parentOfParentId, interview: '', exam: '', test: '', preceptorNotes: '', choices: [] };
+
+            const choiceContainer = createNodeContainer(choiceId);
+            parentNode.parentNode.appendChild(choiceContainer);
+
+            console.log(`Adding sibling to parent node with key: ${parentOfParentId}`);
+            console.log(`Parent node before adding sibling:`, nodes[parentOfParentId]);
+
+            if (!nodes[parentOfParentId]) {
+                console.error(`Parent node with key ${parentOfParentId} not found.`);
+                return;
+            }
+
+            nodes[parentOfParentId].choices.push(choiceId);
+
+            console.log(`Parent node after adding sibling:`, nodes[parentOfParentId]);
+        }
+
+        function createNodeContainer(choiceId) {
+            const choiceContainer = document.createElement('div');
+            choiceContainer.className = 'node child-nodes';
+            choiceContainer.id = choiceId;
+
+            const outcomeInput = document.createElement('textarea');
+            outcomeInput.className = 'textarea';
+            outcomeInput.placeholder = `Enter outcome for ${choiceId}`;
+            outcomeInput.onchange = () => {
+                nodes[choiceId].outcome = outcomeInput.value;
+            };
+
+            const settingContainer = document.createElement('div');
+            settingContainer.className = 'radio-group';
+            const currentSettingLabel = document.createElement('label');
+            currentSettingLabel.innerText = 'Current Encounter';
+            const currentSettingInput = document.createElement('input');
+            currentSettingInput.type = 'radio';
+            currentSettingInput.name = `setting-${choiceId}`;
+            currentSettingInput.value = 'current';
+            currentSettingInput.onchange = () => {
+                nodes[choiceId].setting = 'current';
+            };
+
+            const nextSettingLabel = document.createElement('label');
+            nextSettingLabel.innerText = 'Next Encounter';
+            const nextSettingInput = document.createElement('input');
+            nextSettingInput.type = 'radio';
+            nextSettingInput.name = `setting-${choiceId}`;
+            nextSettingInput.value = 'next';
+            nextSettingInput.onchange = () => {
+                nodes[choiceId].setting = 'next';
+            };
+
+            settingContainer.appendChild(currentSettingLabel);
+            settingContainer.appendChild(currentSettingInput);
+            settingContainer.appendChild(nextSettingLabel);
+            settingContainer.appendChild(nextSettingInput);
+
+            const nextInput = document.createElement('textarea');
+            nextInput.className = 'textarea';
+            nextInput.placeholder = `What do you do next for ${choiceId}`;
+            nextInput.onchange = () => {
+                nodes[choiceId].next = nextInput.value;
+            };
+
+            const preceptorNotesInput = document.createElement('textarea');
+            preceptorNotesInput.className = 'textarea';
+            preceptorNotesInput.placeholder = `Preceptor notes for ${choiceId}`;
+            preceptorNotesInput.onchange = () => {
+                nodes[choiceId].preceptorNotes = preceptorNotesInput.value;
+            };
+
+            const childButton = document.createElement('button');
+            childButton.innerText = 'Add Child';
+            childButton.onclick = () => addChildChoice(choiceId);
+
+            const siblingButton = document.createElement('button');
+            siblingButton.innerText = 'Add Sibling';
+            siblingButton.onclick = () => addSiblingChoice(choiceId);
+
+            const deleteButton = document.createElement('button');
+            deleteButton.innerText = 'Delete Node';
+            deleteButton.onclick = () => deleteNode(choiceId);
+
+            choiceContainer.appendChild(outcomeInput);
+            choiceContainer.appendChild(settingContainer);
+            choiceContainer.appendChild(nextInput);
+            choiceContainer.appendChild(preceptorNotesInput);
+            choiceContainer.appendChild(childButton);
+            choiceContainer.appendChild(siblingButton);
+            choiceContainer.appendChild(deleteButton);
+
+            return choiceContainer;
+        }
+
+        function deleteNode(nodeId) {
+            const node = nodes[nodeId];
+            if (!node) {
+                console.error(`Node with id ${nodeId} not found.`);
+                return;
+            }
+
+            const parentNodeId = node.parent;
+            const parentNode = nodes[parentNodeId];
+
+            if (!parentNode) {
+                console.error(`Parent node with id ${parentNodeId} not found.`);
+                return;
+            }
+
+            // Remove the node from the parent's choices array
+            parentNode.choices = parentNode.choices.filter(id => id !== nodeId);
+
+            // Remove the node and its children from the nodes object
+            function removeNodeAndChildren(id) {
+                const children = nodes[id].choices;
+                children.forEach(childId => removeNodeAndChildren(childId));
+                delete nodes[id];
+            }
+
+            removeNodeAndChildren(nodeId);
+
+            // Remove the node's HTML element
+            const nodeElement = document.getElementById(nodeId);
+            if (nodeElement) {
+                nodeElement.parentNode.removeChild(nodeElement);
+            }
+
+            // Update the JSON and visualization
+            generateJSON();
+        }
+
+        function generateJSON() {
+            const title = document.getElementById('title').value;
+            const initialInterview = document.getElementById('initialInterview').value;
+            const initialExam = document.getElementById('initialExam').value;
+            const initialTest = document.getElementById('initialTest').value;
+            const initialPreceptorNotes = document.getElementById('initialPreceptorNotes').value;
+
+            nodes['initial'].interview = initialInterview;
+            nodes['initial'].exam = initialExam;
+            nodes['initial'].test = initialTest;
+            nodes['initial'].preceptorNotes = initialPreceptorNotes;
+
+            const vignette = {
+                title: title,
+                initial: convertToJSON('initial')
+            };
+
+            document.getElementById('jsonOutput').innerText = JSON.stringify(vignette, null, 2);
+            visualizeVignette(vignette);
+        }
+
+        function visualizeVignette(vignette) {
+            const visualization = document.getElementById('visualization');
+            visualization.innerHTML = '';
+
+            const root = d3.hierarchy(vignette.initial, d => d.choices || []);
+
+            const treeLayout = d3.tree().size([800, 600]);
+            const treeData = treeLayout(root);
+
+            const svg = d3.select('#visualization').append('svg')
+                .attr('width', 800)
+                .attr('height', 600)
+                .call(d3.zoom().on('zoom', function (event) {
+                    svg.attr('transform', event.transform);
+                }))
+                .append('g')
+                .attr('transform', 'translate(40,0)');
+
+            const link = svg.selectAll('.link')
+                .data(treeData.links())
+                .enter().append('line')
+                .attr('class', 'link')
+                .attr('x1', d => d.source.y)
+                .attr('y1', d => d.source.x)
+                .attr('x2', d => d.target.y)
+                .attr('y2', d => d.target.x)
+                .style('stroke', '#ccc');
+
+            const node = svg.selectAll('.node')
+                .data(treeData.descendants())
+                .enter().append('g')
+                .attr('class', 'node')
+                .attr('transform', d => `translate(${d.y},${d.x})`)
+                .on('click', (event, d) => {
+                    if (d && d.data) {
+                        showModal(d.data);
+                    } else {
+                        console.error('Node data is undefined or null', d);
+                    }
+                });
+
+            node.append('circle')
+                .attr('class', 'node-circle')
+                .attr('r', 10);
+
+            node.append('text')
+                .attr('class', 'node-label')
+                .attr('dy', -15)
+                .attr('x', d => d.children ? -10 : 10)
+                .style('text-anchor', d => d.children ? 'end' : 'start')
+                .text(d => d.data.id);
+
+            svg.on('click', () => {
+                const tooltip = document.getElementById('tooltip');
+                if (tooltip) {
+                    tooltip.style.display = 'none';
+                }
+            });
+        }
+
+        function showModal(data) {
+            if (!data) {
+                console.error('Data for modal is undefined or null', data);
+                return;
+            }
+
+            const modal = document.getElementById('myModal');
+            const modalContent = document.getElementById('modalContent');
+
+            modalContent.innerHTML = `
+                <strong>ID:</strong> ${data.id}<br>
+                <strong>Parent:</strong> ${data.parent}<br>
+                <strong>Interview:</strong> ${data.interview}<br>
+                <strong>Exam:</strong> ${data.exam}<br>
+                <strong>Test:</strong> ${data.test}<br>
+                <strong>Outcome:</strong> ${data.outcome}<br>
+                <strong>Setting:</strong> ${data.setting}<br>
+                <strong>What do you do next:</strong> ${data.next}<br>
+                <strong>Preceptor Notes:</strong> ${data.preceptorNotes}
+            `;
+
+            if (modal) {
+                modal.style.display = 'block';
+            } else {
+                console.error('Modal element not found');
+            }
+        }
+
+        // Close the modal when the user clicks on <span> (x)
+        document.getElementsByClassName('close')[0].onclick = function() {
+            const modal = document.getElementById('myModal');
+            if (modal) {
+                modal.style.display = 'none';
+            } else {
+                console.error('Modal element not found');
+            }
+        }
+
+        // Close the modal when the user clicks anywhere outside of the modal
+        window.onclick = function(event) {
+            const modal = document.getElementById('myModal');
+            if (event.target == modal) {
+                if (modal) {
+                    modal.style.display = 'none';
+                } else {
+                    console.error('Modal element not found');
+                }
+            }
+        }
+
+        // Initialize the root node
+        nodes['initial'] = { id: 'initial', parent: null, interview: '', exam: '', test: '', preceptorNotes: '', choices: [] };
+
+        // Function to recursively convert nodes to JSON format
+        function convertToJSON(nodeId) {
+            const node = nodes[nodeId];
+            return {
+                id: node.id,
+                parent: node.parent,
+                interview: node.interview,
+                exam: node.exam,
+                test: node.test,
+                preceptorNotes: node.preceptorNotes,
+                outcome: node.outcome,
+                setting: node.setting,
+                next: node.next,
+                choices: node.choices.map(choiceId => convertToJSON(choiceId))
+            };
+        }
+    </script>
+</body>
+</html>
